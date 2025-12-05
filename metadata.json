@@ -1,0 +1,5 @@
+{
+  "name": "Pixel Tropical Garden",
+  "description": "A 3D interactive garden featuring 20 tropical plants in a voxel art style. Move the cursor to guide the little gardener.",
+  "requestFramePermissions": []
+}
