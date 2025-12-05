@@ -7,6 +7,15 @@ export enum PlantType {
   ORCHID = 'ORCHID'              // Delicate hanging (Phalaenopsis)
 }
 
+export enum WeatherCondition {
+  LUCID_DREAM = 'LUCID_DREAM',
+  AFTERNOON_DELUGE = 'AFTERNOON_DELUGE',
+  SATURATED_STILLNESS = 'SATURATED_STILLNESS',
+  MORNING_MIST = 'MORNING_MIST',
+  EQUATORIAL_HEAT = 'EQUATORIAL_HEAT',
+  TROPICAL_THUNDERSTORM = 'TROPICAL_THUNDERSTORM'
+}
+
 export interface PlantData {
   id: number;
   name: string;
