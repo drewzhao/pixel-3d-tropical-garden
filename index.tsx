@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
-import { Vector3, Group, Mesh, Color, InstancedMesh, Object3D, MeshBasicMaterial, DoubleSide, AdditiveBlending, ShaderMaterial, FogExp2 } from 'three';
+import { Vector3, Group, Mesh, Color, InstancedMesh, Object3D, MeshBasicMaterial, DoubleSide, AdditiveBlending, ShaderMaterial, FogExp2, ACESFilmicToneMapping, NoToneMapping, ToneMapping, Sprite, SpriteMaterial, CanvasTexture } from 'three';
 import { OrbitControls, Html, ContactShadows, useCursor } from '@react-three/drei';
 import { GARDEN_DATA } from './constants';
 import { PlantData, VoxelData, PlantType, WeatherCondition } from './types';
@@ -23,22 +23,20 @@ const RainShaderMaterial = new ShaderMaterial({
     uniform float uTime;
     uniform float uHeight;
     attribute float aSpeed;
-    attribute float aOffset;
     varying float vAlpha;
     
     void main() {
       vec3 pos = position;
       // Fall down
-      float y = pos.y - uTime * aSpeed * 5.0;
+      float y = pos.y - uTime * aSpeed * 25.0; // Fast speed
       // Loop
       pos.y = mod(y, uHeight);
       
       vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * mvPosition;
       
-      // Streak stretching based on camera view not implemented for simplicity, 
-      // just rely on motion
-      gl_PointSize = 2.0;
+      // Scale point size by distance to camera for perspective
+      gl_PointSize = 150.0 / -mvPosition.z;
       
       // Fade near top/bottom
       float h = pos.y / uHeight;
@@ -50,8 +48,15 @@ const RainShaderMaterial = new ShaderMaterial({
     varying float vAlpha;
     
     void main() {
-      if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-      gl_FragColor = vec4(uColor, vAlpha * 0.6);
+      vec2 coord = gl_PointCoord - vec2(0.5);
+      
+      // "Stretched Streak" Abstraction
+      // We draw a thin vertical line within the point sprite
+      if (abs(coord.x) > 0.1 || abs(coord.y) > 0.4) discard;
+      
+      float opacity = (1.0 - abs(coord.y) * 2.0) * vAlpha * 0.5;
+      
+      gl_FragColor = vec4(uColor, opacity);
     }
   `,
   transparent: true,
@@ -110,13 +115,18 @@ const Plant: React.FC<PlantProps> = ({ data, isHovered, onHover, weather }) => {
     let bounceY = 0;
 
     if (weather === WeatherCondition.TROPICAL_THUNDERSTORM) {
-        // Violent shaking
-        const windSpeed = 8.0;
-        windX = Math.sin(time * windSpeed + seed) * 0.15;
-        windZ = Math.cos(time * (windSpeed * 0.8) + seed) * 0.15;
+        // "Wind Shake" Abstraction: Violent, jagged movement
+        const windSpeed = 12.0;
+        // Combine multiple sines for chaotic "noise"
+        const noise = Math.sin(time * windSpeed + seed) + Math.sin(time * windSpeed * 2.5 + seed);
+        const gust = Math.max(0, Math.sin(time * 0.5 + seed)); // Periodic large gusts
+        
+        windX = (noise * 0.05 + gust * 0.1) * 1.5;
+        windZ = (Math.cos(time * 10 + seed) * 0.05) * 1.5;
     } else if (weather === WeatherCondition.AFTERNOON_DELUGE) {
         // Heavy rain depression
         bounceY = -0.05 + Math.sin(time * 2 + seed) * 0.02;
+        windX = Math.sin(time * 2 + seed) * 0.02; 
     } else {
         // Gentle breeze
         windX = Math.sin(time + seed) * 0.03;
@@ -315,7 +325,7 @@ const GardenFloor: React.FC<GardenFloorProps> = ({ onFloorClick, weather }) => {
     switch (weather) {
         case WeatherCondition.AFTERNOON_DELUGE: return '#1a2e15';
         case WeatherCondition.TROPICAL_THUNDERSTORM: return '#0d1a0d';
-        case WeatherCondition.EQUATORIAL_HEAT: return '#4d5c1e';
+        case WeatherCondition.EQUATORIAL_HEAT: return '#556622'; // Drier, lighter green
         default: return '#2d4c1e';
     }
   }, [weather]);
@@ -349,10 +359,10 @@ const RainFX = () => {
         const p = new Float32Array(count * 3);
         const s = new Float32Array(count);
         for(let i=0; i<count; i++) {
-            p[i*3] = (Math.random() - 0.5) * 60;
+            p[i*3] = (Math.random() - 0.5) * 80;
             p[i*3+1] = Math.random() * 40;
-            p[i*3+2] = (Math.random() - 0.5) * 60;
-            s[i] = Math.random() * 0.5 + 0.5;
+            p[i*3+2] = (Math.random() - 0.5) * 80;
+            s[i] = Math.random() * 0.5 + 0.8;
         }
         return { p, s };
     }, []);
@@ -374,21 +384,23 @@ const RainFX = () => {
     );
 }
 
+// "Saturated Stillness" Abstraction: Suspended particles
 const DustFX = () => {
-    const count = 500;
+    const count = 300;
     const mesh = useRef<InstancedMesh>(null);
     const dummy = useMemo(() => new Object3D(), []);
     
     // Initial random positions
     const particles = useMemo(() => {
         return new Array(count).fill(0).map(() => ({
-            x: (Math.random() - 0.5) * 50,
-            y: Math.random() * 15,
-            z: (Math.random() - 0.5) * 50,
+            x: (Math.random() - 0.5) * 60,
+            y: Math.random() * 20,
+            z: (Math.random() - 0.5) * 60,
             speedX: (Math.random() - 0.5) * 0.2,
             speedY: (Math.random() - 0.5) * 0.2,
             speedZ: (Math.random() - 0.5) * 0.2,
-            scale: Math.random() * 0.05 + 0.02
+            scale: Math.random() * 0.08 + 0.02,
+            phase: Math.random() * Math.PI * 2
         }))
     }, []);
 
@@ -396,17 +408,15 @@ const DustFX = () => {
         if (!mesh.current) return;
         const t = clock.getElapsedTime();
         particles.forEach((p, i) => {
-            // Browninan motion approximation
-            const timeX = t * 0.5 + i;
-            p.x += Math.sin(timeX) * 0.01 + p.speedX * 0.01;
-            p.y += Math.cos(timeX * 0.8) * 0.01 + p.speedY * 0.01;
-            p.z += Math.sin(timeX * 1.2) * 0.01 + p.speedZ * 0.01;
-
-            // Loop bounds
-            if (p.y > 15) p.y = 0;
-            if (p.y < 0) p.y = 15;
+            // Suspended particulate movement (drifting)
+            const timeX = t * 0.2 + p.phase;
             
-            dummy.position.set(p.x, p.y, p.z);
+            // Gentle floating (Brownian-ish motion via mixed sines)
+            const currX = p.x + Math.sin(timeX) * 2;
+            const currY = p.y + Math.cos(timeX * 1.5) * 1 + Math.sin(t*0.5)*0.5;
+            const currZ = p.z + Math.cos(timeX * 0.8) * 2;
+
+            dummy.position.set(currX, currY, currZ);
             dummy.scale.setScalar(p.scale);
             dummy.updateMatrix();
             mesh.current!.setMatrixAt(i, dummy.matrix);
@@ -417,30 +427,92 @@ const DustFX = () => {
     return (
         <instancedMesh ref={mesh} args={[undefined, undefined, count]}>
             <sphereGeometry args={[1, 4, 4]} />
-            <meshBasicMaterial color="#FFD700" transparent opacity={0.4} blending={AdditiveBlending} />
+            <meshBasicMaterial color="#EEFFDD" transparent opacity={0.25} blending={AdditiveBlending} />
         </instancedMesh>
     )
 }
 
+// "Morning Mist" Abstraction: Low-lying cloud layers
+const CloudFX = () => {
+  const count = 15;
+  const mesh = useRef<InstancedMesh>(null);
+  const dummy = useMemo(() => new Object3D(), []);
+  
+  const particles = useMemo(() => {
+    return new Array(count).fill(0).map(() => ({
+      x: (Math.random() - 0.5) * 80,
+      z: (Math.random() - 0.5) * 80,
+      rotation: Math.random() * Math.PI,
+      scale: 10 + Math.random() * 15,
+      speed: (Math.random() - 0.5) * 0.5
+    }))
+  }, []);
+
+  useFrame(({ clock }) => {
+    if (!mesh.current) return;
+    const t = clock.getElapsedTime();
+    particles.forEach((p, i) => {
+      // Slow drift
+      const x = p.x + Math.sin(t * 0.05 + i) * 5;
+      const z = p.z + Math.cos(t * 0.05 + i) * 2;
+      
+      dummy.position.set(x, 1.5, z); // Low to ground
+      dummy.rotation.x = -Math.PI / 2;
+      dummy.rotation.z = p.rotation + t * 0.02 * p.speed;
+      dummy.scale.setScalar(p.scale);
+      dummy.updateMatrix();
+      mesh.current!.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.current.instanceMatrix.needsUpdate = true;
+  });
+
+  // Simple circle texture created programmatically for the cloud puff
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
+    grad.addColorStop(0, 'rgba(255,255,255,0.4)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,64,64);
+    return new CanvasTexture(canvas);
+  }, []);
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, count]}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial map={texture} transparent opacity={0.3} depthWrite={false} color="#E0F7FA" />
+    </instancedMesh>
+  );
+}
+
 const LightningFX = () => {
     const light = useRef<any>(null);
+    const { scene } = useThree();
+    const originalBg = useRef(new Color('#101525'));
     
     useFrame(({ clock }) => {
         if (!light.current) return;
-        // Random flashes
-        if (Math.random() > 0.96) {
-             light.current.intensity = 10 + Math.random() * 20;
+        // Random flashes - Low probability
+        if (Math.random() > 0.985) {
+             const intensity = 8 + Math.random() * 12;
+             light.current.intensity = intensity;
              light.current.position.set(
-                 (Math.random() - 0.5) * 40,
+                 (Math.random() - 0.5) * 60,
                  30,
-                 (Math.random() - 0.5) * 40
+                 (Math.random() - 0.5) * 60
              );
+             // "Global Flash" Abstraction: Affect background for split second
+             scene.background = new Color('#303555'); 
         } else {
-             light.current.intensity *= 0.8; // Fast fade
+             // Decay rapidly
+             light.current.intensity = Math.max(0, light.current.intensity - 1.5);
+             scene.background = originalBg.current;
         }
     });
 
-    return <pointLight ref={light} distance={100} color="#a0c4ff" intensity={0} />
+    return <pointLight ref={light} distance={300} color="#eef0ff" intensity={0} />
 }
 
 interface WeatherSystemProps {
@@ -452,8 +524,10 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
 
     useEffect(() => {
         let fogColor = '#4db6ac';
-        let fogDensity = 0.02;
+        let fogDensity = 0.015;
         let bg = '#4db6ac';
+        let toneMapping: ToneMapping = NoToneMapping;
+        let exposure = 1.0;
 
         switch(weather) {
             case WeatherCondition.LUCID_DREAM:
@@ -461,56 +535,61 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
                 fogDensity = 0.015;
                 bg = '#4db6ac';
                 break;
-            case WeatherCondition.AFTERNOON_DELUGE:
-                fogColor = '#505557';
-                fogDensity = 0.04;
-                bg = '#505557';
+            case WeatherCondition.AFTERNOON_DELUGE: // Grey, wet
+                fogColor = '#607080';
+                fogDensity = 0.025; 
+                bg = '#607080';
                 break;
-            case WeatherCondition.SATURATED_STILLNESS:
-                fogColor = '#dbe8d6';
-                fogDensity = 0.06; // Heavy low fog
-                bg = '#dbe8d6';
+            case WeatherCondition.SATURATED_STILLNESS: // Steamy, humid green/white
+                fogColor = '#D8E8D8';
+                fogDensity = 0.035; 
+                bg = '#D8E8D8';
                 break;
-            case WeatherCondition.MORNING_MIST:
-                fogColor = '#e0e0e0';
-                fogDensity = 0.08;
-                bg = '#e0e0e0';
+            case WeatherCondition.MORNING_MIST: // Bright white fog
+                fogColor = '#F0F8FF';
+                fogDensity = 0.045;
+                bg = '#F0F8FF';
                 break;
-            case WeatherCondition.EQUATORIAL_HEAT:
-                fogColor = '#ffeebb';
-                fogDensity = 0.01;
-                bg = '#ffeebb';
+            case WeatherCondition.EQUATORIAL_HEAT: // Harsh yellow/orange
+                // "Equatorial Heat" Abstraction: Over-exposure via Tone Mapping
+                fogColor = '#FFDDAA';
+                fogDensity = 0.01; 
+                bg = '#FFDDAA';
+                toneMapping = ACESFilmicToneMapping;
+                exposure = 1.3; // Slight over-exposure for "heat" feel
                 break;
-            case WeatherCondition.TROPICAL_THUNDERSTORM:
-                fogColor = '#1a1a2e';
-                fogDensity = 0.04;
-                bg = '#1a1a2e';
+            case WeatherCondition.TROPICAL_THUNDERSTORM: // Dark navy
+                fogColor = '#101525';
+                fogDensity = 0.035;
+                bg = '#101525';
                 break;
         }
         
         scene.fog = new FogExp2(fogColor, fogDensity);
         scene.background = new Color(bg);
+        gl.toneMapping = toneMapping;
+        gl.toneMappingExposure = exposure;
         
-        // Very basic "screen tint" via global clear color? No, we use background.
-    }, [weather, scene]);
+    }, [weather, scene, gl]);
 
-    // Lighting adjustments
+    // Dynamic Lighting Props based on weather
     const ambientProps = useMemo(() => {
         switch(weather) {
-            case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.4, color: '#8899aa' };
-            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.2, color: '#222244' };
-            case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 0.9, color: '#ffaa66' };
-            case WeatherCondition.MORNING_MIST: return { intensity: 0.8, color: '#ccddff' };
+            case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.6, color: '#8899aa' };
+            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.2, color: '#334455' };
+            case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 0.8, color: '#ffeecc' };
+            case WeatherCondition.MORNING_MIST: return { intensity: 0.9, color: '#ddeeff' }; // High ambient for scattered light
+            case WeatherCondition.SATURATED_STILLNESS: return { intensity: 0.7, color: '#eefadd' };
             default: return { intensity: 0.7, color: '#ffffff' };
         }
     }, [weather]);
 
     const dirLightProps = useMemo(() => {
         switch(weather) {
-            case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.2, color: '#aabbcc' };
-            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.1, color: '#444488' };
-            case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 1.8, color: '#fff0dd' }; // Blinding sun
-             case WeatherCondition.MORNING_MIST: return { intensity: 0.5, color: '#ffffee' };
+            case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.3, color: '#aabbcc' };
+            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.1, color: '#556677' };
+            case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 2.5, color: '#fff5e6' }; // Blinding sun
+            case WeatherCondition.MORNING_MIST: return { intensity: 0.3, color: '#ffffee' }; // Soft sun
             default: return { intensity: 1.2, color: '#FFF9E0' };
         }
     }, [weather]);
@@ -519,19 +598,20 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
         <>
             <ambientLight {...ambientProps} />
             <directionalLight 
-                position={[20, 30, 15]} 
+                position={[20, 40, 15]} 
                 castShadow 
                 shadow-mapSize={[2048, 2048]} 
                 shadow-bias={-0.0005} 
-                shadow-camera-left={-30}
-                shadow-camera-right={30}
-                shadow-camera-top={30}
-                shadow-camera-bottom={-30}
+                shadow-camera-left={-40}
+                shadow-camera-right={40}
+                shadow-camera-top={40}
+                shadow-camera-bottom={-40}
                 {...dirLightProps}
             />
 
             {(weather === WeatherCondition.AFTERNOON_DELUGE || weather === WeatherCondition.TROPICAL_THUNDERSTORM) && <RainFX />}
             {weather === WeatherCondition.SATURATED_STILLNESS && <DustFX />}
+            {weather === WeatherCondition.MORNING_MIST && <CloudFX />}
             {weather === WeatherCondition.TROPICAL_THUNDERSTORM && <LightningFX />}
         </>
     );
@@ -608,14 +688,14 @@ const UI: React.FC<UIProps> = ({ plant, weather, setWeather }) => {
   return (
     <>
       {/* Weather Controls */}
-      <div className="absolute top-4 left-4 p-4 bg-[#fff8e7]/90 border-[4px] border-emerald-800 rounded-lg shadow-xl font-pixel z-10">
+      <div className="absolute top-4 left-4 p-4 bg-[#fff8e7]/90 border-[4px] border-emerald-800 rounded-lg shadow-xl font-pixel z-10 max-h-[80vh] overflow-y-auto">
           <h3 className="text-emerald-900 text-xl mb-2 font-bold uppercase border-b border-emerald-600 pb-1">Atmosphere</h3>
           <div className="flex flex-col gap-1">
              {Object.values(WeatherCondition).map((w) => (
                  <button 
                     key={w}
                     onClick={() => setWeather(w)}
-                    className={`text-left px-2 py-1 text-lg hover:bg-emerald-200 transition-colors rounded ${weather === w ? 'bg-emerald-600 text-white font-bold' : 'text-emerald-800'}`}
+                    className={`text-left px-2 py-1 text-lg hover:bg-emerald-200 transition-colors rounded whitespace-nowrap ${weather === w ? 'bg-emerald-600 text-white font-bold' : 'text-emerald-800'}`}
                  >
                     {weatherLabels[w]}
                  </button>
@@ -656,6 +736,7 @@ const App = () => {
 
   return (
     <div className="relative w-full h-full bg-[#4db6ac] cursor-crosshair overflow-hidden">
+      {/* We apply ACESFilmicToneMapping dynamically inside WeatherSystem, default here is irrelevant but good practice */}
       <Canvas shadows camera={{ position: [20, 20, 20], fov: 28, near: 0.1, far: 200 }}>
         <GameScene setHoveredPlant={setActivePlant} weather={weather} />
         <OrbitControls 
