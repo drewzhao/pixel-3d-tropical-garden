@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
@@ -324,7 +325,7 @@ const GardenFloor: React.FC<GardenFloorProps> = ({ onFloorClick, weather }) => {
   const floorColor = useMemo(() => {
     switch (weather) {
         case WeatherCondition.AFTERNOON_DELUGE: return '#1a2e15';
-        case WeatherCondition.TROPICAL_THUNDERSTORM: return '#0d1a0d';
+        case WeatherCondition.TROPICAL_THUNDERSTORM: return '#1a261a';
         case WeatherCondition.EQUATORIAL_HEAT: return '#556622'; // Drier, lighter green
         default: return '#2d4c1e';
     }
@@ -504,7 +505,7 @@ const LightningFX = () => {
                  (Math.random() - 0.5) * 60
              );
              // "Global Flash" Abstraction: Affect background for split second
-             scene.background = new Color('#303555'); 
+             scene.background = new Color('#4A5A6A'); 
         } else {
              // Decay rapidly
              light.current.intensity = Math.max(0, light.current.intensity - 1.5);
@@ -558,10 +559,10 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
                 toneMapping = ACESFilmicToneMapping;
                 exposure = 1.3; // Slight over-exposure for "heat" feel
                 break;
-            case WeatherCondition.TROPICAL_THUNDERSTORM: // Dark navy
-                fogColor = '#101525';
-                fogDensity = 0.035;
-                bg = '#101525';
+            case WeatherCondition.TROPICAL_THUNDERSTORM: // Dark slate grey (Lighter than before for visibility)
+                fogColor = '#25303B';
+                fogDensity = 0.03;
+                bg = '#25303B';
                 break;
         }
         
@@ -576,7 +577,7 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
     const ambientProps = useMemo(() => {
         switch(weather) {
             case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.6, color: '#8899aa' };
-            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.2, color: '#334455' };
+            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.6, color: '#556677' }; // Increased intensity
             case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 0.8, color: '#ffeecc' };
             case WeatherCondition.MORNING_MIST: return { intensity: 0.9, color: '#ddeeff' }; // High ambient for scattered light
             case WeatherCondition.SATURATED_STILLNESS: return { intensity: 0.7, color: '#eefadd' };
@@ -587,7 +588,7 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ weather }) => {
     const dirLightProps = useMemo(() => {
         switch(weather) {
             case WeatherCondition.AFTERNOON_DELUGE: return { intensity: 0.3, color: '#aabbcc' };
-            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.1, color: '#556677' };
+            case WeatherCondition.TROPICAL_THUNDERSTORM: return { intensity: 0.5, color: '#778899' }; // Increased intensity
             case WeatherCondition.EQUATORIAL_HEAT: return { intensity: 2.5, color: '#fff5e6' }; // Blinding sun
             case WeatherCondition.MORNING_MIST: return { intensity: 0.3, color: '#ffffee' }; // Soft sun
             default: return { intensity: 1.2, color: '#FFF9E0' };
